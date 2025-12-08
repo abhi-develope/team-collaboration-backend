@@ -3,7 +3,7 @@ const Project = require("../models/Project");
 const User = require("../models/User");
 const { successResponse } = require("../utils/responseHandler");
 const { NotFoundError, ForbiddenError } = require("../utils/errorTypes");
-const { HTTP_STATUS } = require("../config/constants");
+const { HTTP_STATUS, ROLES } = require("../config/constants");
 
 // @desc    Get all tasks for a project
 // @route   GET /api/tasks?projectId=xxx
@@ -13,9 +13,24 @@ const getTasks = async (req, res, next) => {
     const { projectId } = req.query;
 
     if (!projectId) {
-      const tasks = await Task.find()
+      let tasks = await Task.find()
         .populate("projectId", "name")
         .populate("assignedTo", "name email");
+      
+      // Filter tasks based on role:
+      // - MEMBER: Only see tasks assigned to them
+      // - MANAGER/ADMIN: See all tasks
+      if (req.user.role === ROLES.MEMBER) {
+        tasks = tasks.filter((task) => {
+          // Members see tasks assigned to them or unassigned tasks
+          if (!task.assignedTo) return true; // Show unassigned tasks
+          const assignedToId = typeof task.assignedTo === "object" 
+            ? task.assignedTo._id.toString() 
+            : task.assignedTo.toString();
+          return assignedToId === req.user.id.toString();
+        });
+      }
+      
       return successResponse(
         res,
         HTTP_STATUS.OK,
@@ -37,9 +52,23 @@ const getTasks = async (req, res, next) => {
       );
     }
 
-    const tasks = await Task.find({ projectId })
+    let tasks = await Task.find({ projectId })
       .populate("projectId", "name")
       .populate("assignedTo", "name email");
+
+    // Filter tasks based on role:
+    // - MEMBER: Only see tasks assigned to them
+    // - MANAGER/ADMIN: See all tasks
+    if (req.user.role === ROLES.MEMBER) {
+      tasks = tasks.filter((task) => {
+        // Members see tasks assigned to them or unassigned tasks
+        if (!task.assignedTo) return true; // Show unassigned tasks
+        const assignedToId = typeof task.assignedTo === "object" 
+          ? task.assignedTo._id.toString() 
+          : task.assignedTo.toString();
+        return assignedToId === req.user.id.toString();
+      });
+    }
 
     successResponse(res, HTTP_STATUS.OK, "Tasks retrieved successfully", {
       tasks,
@@ -66,6 +95,13 @@ const createTask = async (req, res, next) => {
     if (req.user.teamId.toString() !== project.teamId.toString()) {
       throw new ForbiddenError(
         "You can only create tasks in your team's projects"
+      );
+    }
+
+    // Only MANAGER can assign tasks (ADMIN cannot assign, only manage)
+    if (assignedTo && req.user.role !== ROLES.MANAGER) {
+      throw new ForbiddenError(
+        "Only Managers can assign tasks. Admins can manage but not assign."
       );
     }
 
@@ -127,6 +163,13 @@ const updateTask = async (req, res, next) => {
       );
     }
 
+    // Only MANAGER can assign/update task assignment
+    if (assignedTo !== undefined && req.user.role !== ROLES.MANAGER) {
+      throw new ForbiddenError(
+        "Only Managers can assign tasks. Admins can manage but not assign."
+      );
+    }
+
     // Verify assignee belongs to same team (if updating assignee)
     if (assignedTo) {
       const assignee = await User.findById(assignedTo);
@@ -159,7 +202,7 @@ const updateTask = async (req, res, next) => {
 
 // @desc    Delete task
 // @route   DELETE /api/tasks/:id
-// @access  Private
+// @access  Private (Admin only)
 const deleteTask = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -175,6 +218,11 @@ const deleteTask = async (req, res, next) => {
       throw new ForbiddenError(
         "You can only delete tasks in your team's projects"
       );
+    }
+
+    // Only ADMIN can delete tasks
+    if (req.user.role !== ROLES.ADMIN) {
+      throw new ForbiddenError("Only Admins can delete tasks");
     }
 
     await Task.findByIdAndDelete(id);

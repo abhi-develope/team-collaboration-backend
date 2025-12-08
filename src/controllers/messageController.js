@@ -1,8 +1,9 @@
 const Message = require("../models/Message");
 const Team = require("../models/Team");
+const User = require("../models/User");
 const { successResponse } = require("../utils/responseHandler");
 const { NotFoundError, ForbiddenError } = require("../utils/errorTypes");
-const { HTTP_STATUS } = require("../config/constants");
+const { HTTP_STATUS, ROLES } = require("../config/constants");
 
 // @desc    Send message in team chat
 // @route   POST /api/messages
@@ -30,10 +31,10 @@ const sendMessage = async (req, res, next) => {
     });
 
     const populatedMessage = await Message.findById(message._id)
-      .populate("senderId", "name email")
+      .populate("senderId", "name email role")
       .populate("teamId", "name");
 
-    // Emit to team room via Socket.IO
+    // Emit to team room via Socket.IO - everyone sees all messages
     const io = req.app.get("io");
     if (io) {
       io.to(`team:${teamId}`).emit("new-message", populatedMessage);
@@ -69,10 +70,11 @@ const getMessages = async (req, res, next) => {
       throw new ForbiddenError("You can only view messages from your own team");
     }
 
+    // Everyone sees all messages regardless of role
     const messages = await Message.find({ teamId })
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
-      .populate("senderId", "name email")
+      .populate("senderId", "name email role")
       .populate("teamId", "name");
 
     successResponse(res, HTTP_STATUS.OK, "Messages retrieved successfully", {
