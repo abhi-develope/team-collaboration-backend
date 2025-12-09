@@ -5,39 +5,28 @@ const { successResponse } = require("../utils/responseHandler");
 const { NotFoundError, ForbiddenError } = require("../utils/errorTypes");
 const { HTTP_STATUS, ROLES } = require("../config/constants");
 
-// @desc    Send message in team chat
+// @desc    Send message in global chat
 // @route   POST /api/messages
 // @access  Private
 const sendMessage = async (req, res, next) => {
   try {
-    const { content, teamId } = req.body;
+    const { content } = req.body;
 
-    // Verify team exists
-    const team = await Team.findById(teamId);
-    if (!team) {
-      throw new NotFoundError("Team not found");
-    }
-
-    // Verify user belongs to team
-    if (req.user.teamId.toString() !== teamId) {
-      throw new ForbiddenError("You can only send messages to your own team");
-    }
-
+    // Create message without team requirement - global chat
     const message = await Message.create({
       content,
       senderId: req.user.id,
-      teamId,
+      teamId: null, // No team required
       timestamp: new Date(),
     });
 
     const populatedMessage = await Message.findById(message._id)
-      .populate("senderId", "name email role")
-      .populate("teamId", "name");
+      .populate("senderId", "name email role");
 
-    // Emit to team room via Socket.IO - everyone sees all messages
+    // Emit to global room via Socket.IO - everyone sees all messages
     const io = req.app.get("io");
     if (io) {
-      io.to(`team:${teamId}`).emit("new-message", populatedMessage);
+      io.emit("new-message", populatedMessage); // Broadcast to all connected users
     }
 
     successResponse(res, HTTP_STATUS.CREATED, "Message sent successfully", {
@@ -48,34 +37,18 @@ const sendMessage = async (req, res, next) => {
   }
 };
 
-// @desc    Get team chat messages
-// @route   GET /api/messages?teamId=xxx&limit=50
+// @desc    Get all chat messages (global chat - no team required)
+// @route   GET /api/messages?limit=50
 // @access  Private
 const getMessages = async (req, res, next) => {
   try {
-    const { teamId, limit = 50 } = req.query;
+    const { limit = 100 } = req.query;
 
-    if (!teamId) {
-      throw new NotFoundError("Team ID is required");
-    }
-
-    // Verify team exists
-    const team = await Team.findById(teamId);
-    if (!team) {
-      throw new NotFoundError("Team not found");
-    }
-
-    // Verify user belongs to team
-    if (req.user.teamId.toString() !== teamId) {
-      throw new ForbiddenError("You can only view messages from your own team");
-    }
-
-    // Everyone sees all messages regardless of role
-    const messages = await Message.find({ teamId })
+    // Get all messages from all users - global chat
+    const messages = await Message.find()
       .sort({ timestamp: -1 })
       .limit(parseInt(limit))
-      .populate("senderId", "name email role")
-      .populate("teamId", "name");
+      .populate("senderId", "name email role");
 
     successResponse(res, HTTP_STATUS.OK, "Messages retrieved successfully", {
       messages: messages.reverse(),

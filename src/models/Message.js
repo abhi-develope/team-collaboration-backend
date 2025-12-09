@@ -15,7 +15,7 @@ const messageSchema = new mongoose.Schema(
     teamId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Team",
-      required: [true, "Team is required"],
+      required: false,
     },
     timestamp: {
       type: Date,

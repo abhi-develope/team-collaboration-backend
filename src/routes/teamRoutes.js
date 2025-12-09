@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { createTeam, getTeamMembers, getMyTeam } = require("../controllers/teamController");
+const { createTeam, getTeamMembers, getMyTeam, getAllMembers } = require("../controllers/teamController");
 const { createTeamSchema } = require("../validators/teamValidator");
 const { validateRequest } = require("../middleware/validateRequest");
 const { protect } = require("../middleware/authMiddleware");
@@ -14,6 +14,7 @@ router.post(
 );
 
 router.get("/my-team", getMyTeam);
+router.get("/members/all", getAllMembers);
 router.get("/:teamId/members", getTeamMembers);
 
 module.exports = router;

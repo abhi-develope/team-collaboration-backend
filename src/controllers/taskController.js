@@ -80,10 +80,15 @@ const getTasks = async (req, res, next) => {
 
 // @desc    Create new task
 // @route   POST /api/tasks
-// @access  Private
+// @access  Private (Admin/Manager only - Members cannot create tasks)
 const createTask = async (req, res, next) => {
   try {
     const { title, description, status, projectId, assignedTo } = req.body;
+
+    // Members cannot create tasks
+    if (req.user.role === ROLES.MEMBER) {
+      throw new ForbiddenError("Members cannot create tasks. Only Admins and Managers can create tasks.");
+    }
 
     // Verify project exists
     const project = await Project.findById(projectId);
@@ -91,27 +96,31 @@ const createTask = async (req, res, next) => {
       throw new NotFoundError("Project not found");
     }
 
-    // Verify user belongs to project's team
-    if (req.user.teamId.toString() !== project.teamId.toString()) {
+    // Verify user belongs to project's team (if team exists)
+    if (project.teamId && req.user.teamId && req.user.teamId.toString() !== project.teamId.toString()) {
       throw new ForbiddenError(
         "You can only create tasks in your team's projects"
       );
     }
 
-    // Only MANAGER can assign tasks (ADMIN cannot assign, only manage)
+    // Only MANAGER can assign tasks to members
     if (assignedTo && req.user.role !== ROLES.MANAGER) {
       throw new ForbiddenError(
-        "Only Managers can assign tasks. Admins can manage but not assign."
+        "Only Managers can assign tasks to members. Admins can create tasks but cannot assign them."
       );
     }
 
-    // Verify assignee belongs to same team (if provided)
+    // Verify assignee is a MEMBER (if provided)
     if (assignedTo) {
       const assignee = await User.findById(assignedTo);
-      if (
-        !assignee ||
-        assignee.teamId.toString() !== project.teamId.toString()
-      ) {
+      if (!assignee) {
+        throw new NotFoundError("User not found");
+      }
+      if (assignee.role !== ROLES.MEMBER) {
+        throw new ForbiddenError("Tasks can only be assigned to members");
+      }
+      // Verify assignee belongs to same team (if team exists)
+      if (project.teamId && assignee.teamId && assignee.teamId.toString() !== project.teamId.toString()) {
         throw new ForbiddenError("Cannot assign task to user outside the team");
       }
     }
@@ -128,10 +137,12 @@ const createTask = async (req, res, next) => {
       .populate("projectId", "name")
       .populate("assignedTo", "name email");
 
-    // Emit task creation to team room
+    // Emit task creation to team room (if team exists)
     const io = req.app.get("io");
-    if (io) {
+    if (io && project.teamId) {
       io.to(`team:${project.teamId}`).emit("task-updated", populatedTask);
+    } else if (io) {
+      io.emit("task-updated", populatedTask); // Broadcast to all if no team
     }
 
     successResponse(res, HTTP_STATUS.CREATED, "Task created successfully", {
@@ -148,50 +159,78 @@ const createTask = async (req, res, next) => {
 const updateTask = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { assignedTo } = req.body;
+    const { assignedTo, status, title, description } = req.body;
 
-    let task = await Task.findById(id).populate("projectId");
+    let task = await Task.findById(id).populate("projectId").populate("assignedTo");
     if (!task) {
       throw new NotFoundError("Task not found");
     }
 
-    // Verify user belongs to task's team
+    // Verify user belongs to task's team (if team exists)
     const project = await Project.findById(task.projectId._id);
-    if (req.user.teamId.toString() !== project.teamId.toString()) {
+    if (project.teamId && req.user.teamId && req.user.teamId.toString() !== project.teamId.toString()) {
       throw new ForbiddenError(
         "You can only update tasks in your team's projects"
       );
     }
 
-    // Only MANAGER can assign/update task assignment
-    if (assignedTo !== undefined && req.user.role !== ROLES.MANAGER) {
-      throw new ForbiddenError(
-        "Only Managers can assign tasks. Admins can manage but not assign."
-      );
-    }
-
-    // Verify assignee belongs to same team (if updating assignee)
-    if (assignedTo) {
-      const assignee = await User.findById(assignedTo);
-      if (
-        !assignee ||
-        assignee.teamId.toString() !== project.teamId.toString()
-      ) {
-        throw new ForbiddenError("Cannot assign task to user outside the team");
+    // MEMBER can only update status of tasks assigned to them
+    if (req.user.role === ROLES.MEMBER) {
+      // Check if task is assigned to this member
+      const assignedToId = task.assignedTo 
+        ? (typeof task.assignedTo === "object" ? task.assignedTo._id.toString() : task.assignedTo.toString())
+        : null;
+      
+      if (assignedToId !== req.user.id.toString()) {
+        throw new ForbiddenError("You can only update tasks assigned to you");
       }
+      
+      // Members can only update status, not other fields
+      const updateData = { status: req.body.status };
+      task = await Task.findByIdAndUpdate(id, updateData, {
+        new: true,
+        runValidators: true,
+      })
+        .populate("projectId", "name")
+        .populate("assignedTo", "name email");
+    } else {
+      // ADMIN and MANAGER can update all fields
+      // Only MANAGER can assign/update task assignment
+      if (assignedTo !== undefined && req.user.role !== ROLES.MANAGER) {
+        throw new ForbiddenError(
+          "Only Managers can assign tasks to members. Admins can update tasks but cannot assign them."
+        );
+      }
+
+      // Verify assignee is a MEMBER (if updating assignee)
+      if (assignedTo) {
+        const assignee = await User.findById(assignedTo);
+        if (!assignee) {
+          throw new NotFoundError("User not found");
+        }
+        if (assignee.role !== ROLES.MEMBER) {
+          throw new ForbiddenError("Tasks can only be assigned to members");
+        }
+        // Verify assignee belongs to same team (if team exists)
+        if (project.teamId && assignee.teamId && assignee.teamId.toString() !== project.teamId.toString()) {
+          throw new ForbiddenError("Cannot assign task to user outside the team");
+        }
+      }
+
+      task = await Task.findByIdAndUpdate(id, req.body, {
+        new: true,
+        runValidators: true,
+      })
+        .populate("projectId", "name")
+        .populate("assignedTo", "name email");
     }
 
-    task = await Task.findByIdAndUpdate(id, req.body, {
-      new: true,
-      runValidators: true,
-    })
-      .populate("projectId", "name")
-      .populate("assignedTo", "name email");
-
-    // Emit task update to team room
+    // Emit task update to team room (if team exists)
     const io = req.app.get("io");
-    if (io) {
+    if (io && project.teamId) {
       io.to(`team:${project.teamId}`).emit("task-updated", task);
+    } else if (io) {
+      io.emit("task-updated", task); // Broadcast to all if no team
     }
 
     successResponse(res, HTTP_STATUS.OK, "Task updated successfully", { task });

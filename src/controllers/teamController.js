@@ -2,7 +2,7 @@ const Team = require("../models/Team");
 const User = require("../models/User");
 const { successResponse } = require("../utils/responseHandler");
 const { NotFoundError, ForbiddenError } = require("../utils/errorTypes");
-const { HTTP_STATUS } = require("../config/constants");
+const { HTTP_STATUS, ROLES } = require("../config/constants");
 
 // @desc    Create team
 // @route   POST /api/teams
@@ -86,4 +86,25 @@ const getMyTeam = async (req, res, next) => {
   }
 };
 
-module.exports = { createTeam, getTeamMembers, getMyTeam };
+// @desc    Get all members (for task assignment)
+// @route   GET /api/teams/members/all
+// @access  Private (Manager/Admin only)
+const getAllMembers = async (req, res, next) => {
+  try {
+    // Only MANAGER and ADMIN can get all members for task assignment
+    if (req.user.role !== ROLES.MANAGER && req.user.role !== ROLES.ADMIN) {
+      throw new ForbiddenError("Only Managers and Admins can view all members");
+    }
+
+    // Get all users with MEMBER role
+    const members = await User.find({ role: ROLES.MEMBER }).select("-password");
+
+    successResponse(res, HTTP_STATUS.OK, "Members retrieved successfully", {
+      members,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { createTeam, getTeamMembers, getMyTeam, getAllMembers };
