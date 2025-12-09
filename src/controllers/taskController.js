@@ -16,7 +16,7 @@ const getTasks = async (req, res, next) => {
       let tasks = await Task.find()
         .populate("projectId", "name")
         .populate("assignedTo", "name email");
-      
+
       // Filter tasks based on role:
       // - MEMBER: Only see tasks assigned to them
       // - MANAGER/ADMIN: See all tasks
@@ -24,13 +24,14 @@ const getTasks = async (req, res, next) => {
         tasks = tasks.filter((task) => {
           // Members only see tasks assigned to them (not unassigned tasks)
           if (!task.assignedTo) return false;
-          const assignedToId = typeof task.assignedTo === "object" 
-            ? task.assignedTo._id.toString() 
-            : task.assignedTo.toString();
+          const assignedToId =
+            typeof task.assignedTo === "object"
+              ? task.assignedTo._id.toString()
+              : task.assignedTo.toString();
           return assignedToId === req.user.id.toString();
         });
       }
-      
+
       return successResponse(
         res,
         HTTP_STATUS.OK,
@@ -59,9 +60,10 @@ const getTasks = async (req, res, next) => {
       tasks = tasks.filter((task) => {
         // Members only see tasks assigned to them (not unassigned tasks)
         if (!task.assignedTo) return false;
-        const assignedToId = typeof task.assignedTo === "object" 
-          ? task.assignedTo._id.toString() 
-          : task.assignedTo.toString();
+        const assignedToId =
+          typeof task.assignedTo === "object"
+            ? task.assignedTo._id.toString()
+            : task.assignedTo.toString();
         return assignedToId === req.user.id.toString();
       });
     }
@@ -83,7 +85,9 @@ const createTask = async (req, res, next) => {
 
     // Members cannot create tasks
     if (req.user.role === ROLES.MEMBER) {
-      throw new ForbiddenError("Members cannot create tasks. Only Admins and Managers can create tasks.");
+      throw new ForbiddenError(
+        "Members cannot create tasks. Only Admins and Managers can create tasks."
+      );
     }
 
     // Verify project exists
@@ -93,7 +97,11 @@ const createTask = async (req, res, next) => {
     }
 
     // Verify user belongs to project's team (if team exists)
-    if (project.teamId && req.user.teamId && req.user.teamId.toString() !== project.teamId.toString()) {
+    if (
+      project.teamId &&
+      req.user.teamId &&
+      req.user.teamId.toString() !== project.teamId.toString()
+    ) {
       throw new ForbiddenError(
         "You can only create tasks in your team's projects"
       );
@@ -153,30 +161,26 @@ const updateTask = async (req, res, next) => {
     const { id } = req.params;
     const { assignedTo, status, title, description } = req.body;
 
-    let task = await Task.findById(id).populate("projectId").populate("assignedTo");
+    let task = await Task.findById(id)
+      .populate("projectId")
+      .populate("assignedTo");
     if (!task) {
       throw new NotFoundError("Task not found");
-    }
-
-    // Verify user belongs to task's team (if team exists)
-    const project = await Project.findById(task.projectId._id);
-    if (project.teamId && req.user.teamId && req.user.teamId.toString() !== project.teamId.toString()) {
-      throw new ForbiddenError(
-        "You can only update tasks in your team's projects"
-      );
     }
 
     // MEMBER can only update status of tasks assigned to them
     if (req.user.role === ROLES.MEMBER) {
       // Check if task is assigned to this member
-      const assignedToId = task.assignedTo 
-        ? (typeof task.assignedTo === "object" ? task.assignedTo._id.toString() : task.assignedTo.toString())
+      const assignedToId = task.assignedTo
+        ? typeof task.assignedTo === "object"
+          ? task.assignedTo._id.toString()
+          : task.assignedTo.toString()
         : null;
-      
+
       if (assignedToId !== req.user.id.toString()) {
         throw new ForbiddenError("You can only update tasks assigned to you");
       }
-      
+
       // Members can only update status, not other fields
       const updateData = { status: req.body.status };
       task = await Task.findByIdAndUpdate(id, updateData, {
