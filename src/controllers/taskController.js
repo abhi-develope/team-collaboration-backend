@@ -219,8 +219,8 @@ const updateTask = async (req, res, next) => {
 
     // Emit task update to team room (if team exists)
     const io = req.app.get("io");
-    if (io && project.teamId) {
-      io.to(`team:${project.teamId}`).emit("task-updated", task);
+    if (io && task.projectId?.teamId) {
+      io.to(`team:${task.projectId.teamId}`).emit("task-updated", task);
     } else if (io) {
       io.emit("task-updated", task); // Broadcast to all if no team
     }
