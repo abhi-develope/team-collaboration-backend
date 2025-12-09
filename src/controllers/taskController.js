@@ -22,8 +22,8 @@ const getTasks = async (req, res, next) => {
       // - MANAGER/ADMIN: See all tasks
       if (req.user.role === ROLES.MEMBER) {
         tasks = tasks.filter((task) => {
-          // Members see tasks assigned to them or unassigned tasks
-          if (!task.assignedTo) return true; // Show unassigned tasks
+          // Members only see tasks assigned to them (not unassigned tasks)
+          if (!task.assignedTo) return false;
           const assignedToId = typeof task.assignedTo === "object" 
             ? task.assignedTo._id.toString() 
             : task.assignedTo.toString();
@@ -45,11 +45,14 @@ const getTasks = async (req, res, next) => {
       throw new NotFoundError("Project not found");
     }
 
-    // Verify user belongs to project's team
-    if (req.user.teamId.toString() !== project.teamId.toString()) {
-      throw new ForbiddenError(
-        "You do not have access to this project's tasks"
-      );
+    // Verify user belongs to project's team (handle null teamIds safely)
+    if (project.teamId) {
+      if (!req.user.teamId) {
+        throw new ForbiddenError("You do not have access to this project's tasks");
+      }
+      if (req.user.teamId.toString() !== project.teamId.toString()) {
+        throw new ForbiddenError("You do not have access to this project's tasks");
+      }
     }
 
     let tasks = await Task.find({ projectId })
@@ -61,8 +64,8 @@ const getTasks = async (req, res, next) => {
     // - MANAGER/ADMIN: See all tasks
     if (req.user.role === ROLES.MEMBER) {
       tasks = tasks.filter((task) => {
-        // Members see tasks assigned to them or unassigned tasks
-        if (!task.assignedTo) return true; // Show unassigned tasks
+        // Members only see tasks assigned to them (not unassigned tasks)
+        if (!task.assignedTo) return false;
         const assignedToId = typeof task.assignedTo === "object" 
           ? task.assignedTo._id.toString() 
           : task.assignedTo.toString();

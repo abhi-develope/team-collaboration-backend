@@ -6,10 +6,15 @@ const sendMessageSchema = Joi.object({
     "string.max": "Message cannot exceed 2000 characters",
     "any.required": "Message content is required",
   }),
-  teamId: Joi.string().hex().length(24).required().messages({
-    "any.required": "Team ID is required",
-    "string.length": "Invalid Team ID format",
-  }),
+  // Optional for global chat; allow null/empty
+  teamId: Joi.string()
+    .hex()
+    .length(24)
+    .allow(null, "")
+    .optional()
+    .messages({
+      "string.length": "Invalid Team ID format",
+    }),
 });
 
 module.exports = {
