@@ -115,10 +115,6 @@ const createTask = async (req, res, next) => {
       if (assignee.role !== ROLES.MEMBER) {
         throw new ForbiddenError("Tasks can only be assigned to members");
       }
-      // Verify assignee belongs to same team (if team exists)
-      if (project.teamId && assignee.teamId && assignee.teamId.toString() !== project.teamId.toString()) {
-        throw new ForbiddenError("Cannot assign task to user outside the team");
-      }
     }
 
     const task = await Task.create({
@@ -206,10 +202,6 @@ const updateTask = async (req, res, next) => {
         }
         if (assignee.role !== ROLES.MEMBER) {
           throw new ForbiddenError("Tasks can only be assigned to members");
-        }
-        // Verify assignee belongs to same team (if team exists)
-        if (project.teamId && assignee.teamId && assignee.teamId.toString() !== project.teamId.toString()) {
-          throw new ForbiddenError("Cannot assign task to user outside the team");
         }
       }
 
