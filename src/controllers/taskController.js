@@ -45,15 +45,8 @@ const getTasks = async (req, res, next) => {
       throw new NotFoundError("Project not found");
     }
 
-    // Verify user belongs to project's team (handle null teamIds safely)
-    if (project.teamId) {
-      if (!req.user.teamId) {
-        throw new ForbiddenError("You do not have access to this project's tasks");
-      }
-      if (req.user.teamId.toString() !== project.teamId.toString()) {
-        throw new ForbiddenError("You do not have access to this project's tasks");
-      }
-    }
+    // Remove teamId-based access checks
+    // Any member can see their assigned tasks in any project
 
     let tasks = await Task.find({ projectId })
       .populate("projectId", "name")
