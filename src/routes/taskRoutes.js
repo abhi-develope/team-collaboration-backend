@@ -6,6 +6,7 @@ const {
   updateTask,
   deleteTask,
 } = require("../controllers/taskController");
+const { handleAssistant } = require("../controllers/assistantController");
 const {
   createTaskSchema,
   updateTaskSchema,
@@ -15,6 +16,9 @@ const { protect } = require("../middleware/authMiddleware");
 
 // All routes are protected
 router.use(protect);
+
+// Assistant route (must be before /:id route)
+router.post("/assistant", handleAssistant);
 
 router
   .route("/")
